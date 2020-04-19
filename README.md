@@ -9,13 +9,12 @@ Install
 Use
 
 ```js
-import { getYupSchema } from 'qe-json-to-yup';
+import { buildYupSchema } from 'qe-json-to-yup';
 
-const yupSchema = getYupSchema({
+const yupSchema = buildYupSchema({
   id: {
     type: 'number',
-    min: 5,
-    max: 10,
+    positive: true,
   },
   username: {
     type: 'string',
@@ -48,8 +47,7 @@ This would generate the following Yup validation schema:
 ```js
 const schema = yup.object().shape({
   id: yup.number()
-    .min(5)
-    .max(10),
+    .positive(),
   username: yup.string()
     .required()
     .min(8)

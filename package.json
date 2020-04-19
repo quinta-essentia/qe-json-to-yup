@@ -1,9 +1,12 @@
 {
   "name": "qe-json-to-yup",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Build a Yup schema object from JSON configuration.",
   "source": "src/index.js",
   "main": "dist/index.js",
+  "files": [
+    "dist/**/*"
+  ],
   "scripts": {
     "build": "./node_modules/.bin/rimraf ./dist && ./node_modules/.bin/babel ./src --out-dir ./dist --ignore \"src/**/*.test.js\"",
     "lint": "./node_modules/.bin/eslint \"src/**/*.js\"",

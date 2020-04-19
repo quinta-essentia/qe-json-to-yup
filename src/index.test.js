@@ -1,12 +1,18 @@
 import { parse } from 'date-fns';
-import { ValidationError } from 'yup';
+import {
+  ValidationError,
+  addMethod,
+  string,
+} from 'yup';
+import noop from 'lodash/noop';
 
 import {
   YupTypesNames,
   isYupType,
   getNormalizedConfig,
   getYupType,
-  getYupSchema,
+  applyMethodsOnType,
+  buildYupSchema,
 } from './index';
 
 describe('qe-json-to-yup', () => {
@@ -137,50 +143,110 @@ describe('qe-json-to-yup', () => {
     });
   });
 
-  describe('getYupSchema', () => {
-    test('types', () => {
-      const yupSchema = getYupSchema({
-        id: 'number',
-        username: 'string',
-        password: 'string',
-        active: 'boolean',
-        created: 'date',
-        tags: 'array',
-      });
+  describe('applyMethodsOnType', () => {
+    test('default', () => {
+      expect(
+        applyMethodsOnType(
+          getYupType({ type: YupTypesNames.STRING }),
+          YupTypesNames.STRING,
+          [
+            {
+              name: 'required',
+              args: true,
+            },
+            {
+              name: 'min',
+              args: 3,
+            },
+            {
+              name: 'max',
+              args: 5,
+            },
+          ],
+        )
+          .describe(),
+      )
+        .toEqual({
+          label: noop(),
+          meta: noop(),
+          tests: [
+            {
+              name: 'required',
+              params: noop(),
+            },
+            {
+              name: 'min',
+              params: {
+                min: 3,
+              },
+            },
+            {
+              name: 'max',
+              params: {
+                max: 5,
+              },
+            },
+          ],
+          type: 'string',
+        });
 
-      expect(yupSchema.isValidSync({
-        id: 1,
-        username: 'petar',
-        password: 'test123',
-        active: true,
-        created: new Date(),
-        tags: ['javascript', 'html', 'css'],
-      }))
-        .toEqual(true);
-      expect(yupSchema.isValidSync({
-        id: '1',
-        username: 'petar',
-        password: 'test123',
-        active: 'true',
-        created: '2020-04-17',
-      }))
-        .toEqual(true);
-      expect(yupSchema.isValidSync({
-        id: 'a',
-        username: 'petar',
-        password: 'test123',
-        active: true,
-        created: new Date(),
-      }))
-        .toEqual(false);
+      expect(() => {
+        applyMethodsOnType(
+          getYupType({ type: YupTypesNames.STRING }),
+          YupTypesNames.STRING,
+          [
+            {
+              name: 'password',
+              args: true,
+            },
+          ],
+        );
+      })
+        .toThrow('Invalid method password on string type');
     });
 
-    test('methods', () => {
-      const yupSchema = getYupSchema({
+    test('custom', () => {
+      addMethod(
+        string,
+        'passcode',
+        () => string()
+          .length(4),
+      );
+
+      expect(
+        applyMethodsOnType(
+          getYupType({ type: YupTypesNames.STRING }),
+          YupTypesNames.STRING,
+          [
+            {
+              name: 'passcode',
+            },
+          ],
+        )
+          .describe(),
+      )
+        .toEqual({
+          label: noop(),
+          meta: noop(),
+          tests: [
+            {
+              name: 'length',
+              params: {
+                length: 4,
+              },
+            },
+          ],
+          type: 'string',
+        });
+    });
+  });
+
+  describe('buildYupSchema', () => {
+    test('schema', () => {
+      const yupSchema = buildYupSchema({
         id: {
           type: 'number',
-          min: 5,
-          max: 10,
+          positive: true,
         },
         username: {
           type: 'string',
@@ -232,7 +298,7 @@ describe('qe-json-to-yup', () => {
       expect(() => {
         yupSchema.validateSync(
           {
-            id: 1,
+            id: -1,
             username: 'petar',
             password: 'teeessst',
             active: true,
@@ -247,14 +313,14 @@ describe('qe-json-to-yup', () => {
 
     test('exceptions', () => {
       expect(() => {
-        getYupSchema({
+        buildYupSchema({
           username: 'string',
           passowrd: 'password',
         });
       }).toThrow('Type password is not valid type.');
 
       expect(() => {
-        getYupSchema({
+        buildYupSchema({
           passowrd: {
             type: 'string',
             required: true,
@@ -264,6 +330,313 @@ describe('qe-json-to-yup', () => {
           },
         });
       }).toThrow('Invalid method password on string type');
+    });
+
+    describe('methods', () => {
+      describe('array', () => {
+        test('default', () => {
+          const yupSchema = buildYupSchema({
+            tags: 'array',
+          });
+
+          expect(yupSchema.isValidSync({ tags: ['javascript', 'html', 'css'] }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ tags: true }))
+            .toEqual(false);
+        });
+        test('required', () => {
+          const yupSchema = buildYupSchema({
+            tags: {
+              type: 'array',
+              required: true,
+            },
+          });
+
+          expect(yupSchema.isValidSync({ tags: ['javascript', 'html', 'css'] }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(false);
+        });
+        test('min/max', () => {
+          const yupSchema = buildYupSchema({
+            tags: {
+              type: 'array',
+              required: true,
+              min: 3,
+              max: 5,
+            },
+          });
+
+          expect(yupSchema.isValidSync({ tags: ['javascript', 'html', 'css'] }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(false);
+          expect(yupSchema.isValidSync({ tags: ['javascript', 'html'] }))
+            .toEqual(false);
+          expect(yupSchema.isValidSync({ tags: ['javascript', 'html', 'css', 'react', 'redux', 'd3'] }))
+            .toEqual(false);
+        });
+      });
+
+      describe('boolean', () => {
+        test('default', () => {
+          const yupSchema = buildYupSchema({
+            active: 'boolean',
+          });
+
+          expect(yupSchema.isValidSync({ active: true }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ active: 'false' }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ active: 'qwerty' }))
+            .toEqual(false);
+        });
+        test('required', () => {
+          const yupSchema = buildYupSchema({
+            active: {
+              type: 'boolean',
+              required: true,
+            },
+          });
+
+          expect(yupSchema.isValidSync({ active: true }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(false);
+        });
+      });
+
+      describe('date', () => {
+        test('default', () => {
+          const yupSchema = buildYupSchema({
+            created: 'date',
+          });
+
+          expect(yupSchema.isValidSync({ created: parse('2020-04-19', 'yyyy-MM-dd', new Date()) }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ created: '2020-04-19' }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ created: 'qwerty' }))
+            .toEqual(false);
+        });
+        test('required', () => {
+          const yupSchema = buildYupSchema({
+            created: {
+              type: 'date',
+              required: true,
+            },
+          });
+
+          expect(yupSchema.isValidSync({ created: parse('2020-04-19', 'yyyy-MM-dd', new Date()) }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(false);
+        });
+        test('min/max', () => {
+          const yupSchema = buildYupSchema({
+            created: {
+              type: 'date',
+              required: true,
+              min: parse('2020-04-15', 'yyyy-MM-dd', new Date()),
+              max: parse('2020-04-20', 'yyyy-MM-dd', new Date()),
+            },
+          });
+
+          expect(yupSchema.isValidSync({ created: parse('2020-04-14', 'yyyy-MM-dd', new Date()) }))
+            .toEqual(false);
+          expect(yupSchema.isValidSync({ created: parse('2020-04-19', 'yyyy-MM-dd', new Date()) }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ created: parse('2020-04-21', 'yyyy-MM-dd', new Date()) }))
+            .toEqual(false);
+        });
+      });
+
+      describe('mixed', () => {
+        test('oneOf', () => {
+          const yupSchema = buildYupSchema({
+            active: {
+              type: 'boolean',
+              oneOf: [true],
+            },
+            type: {
+              type: 'number',
+              oneOf: [1, 2, 3],
+            },
+          });
+
+          expect(yupSchema.isValidSync({ active: true, type: 1 }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ active: 'true', type: '1' }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ active: false, type: 3 }))
+            .toEqual(false);
+          expect(yupSchema.isValidSync({ active: true, type: 4 }))
+            .toEqual(false);
+        });
+
+        test('when', () => {
+          const yupSchema = buildYupSchema({
+            active: {
+              type: 'boolean',
+              required: true,
+            },
+            username: {
+              type: 'mixed',
+              when: {
+                active: {
+                  is: true,
+                  then: {
+                    type: 'string',
+                    required: true,
+                  },
+                  otherwise: {
+                    type: 'string',
+                  },
+                },
+              },
+            },
+          });
+
+          expect(yupSchema.isValidSync({ active: true, username: 'petar' }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ active: false }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ active: true }))
+            .toEqual(false);
+
+          expect(() => {
+            buildYupSchema({
+              active: {
+                type: 'boolean',
+                required: true,
+              },
+              username: {
+                type: 'mixed',
+                when: {
+                  active: {
+                    then: {
+                      type: 'string',
+                      required: true,
+                    },
+                    otherwise: {
+                      type: 'string',
+                    },
+                  },
+                },
+              },
+            });
+          }).toThrow('Invalid configuration, property "is" is required in "when" method');
+        });
+      });
+
+      describe('number', () => {
+        test('default', () => {
+          const yupSchema = buildYupSchema({
+            id: 'number',
+          });
+
+          expect(yupSchema.isValidSync({ id: 1 }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ id: '1' }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ id: true }))
+            .toEqual(false);
+        });
+        test('required', () => {
+          const yupSchema = buildYupSchema({
+            id: {
+              type: 'number',
+              required: true,
+            },
+          });
+
+          expect(yupSchema.isValidSync({ id: 1 }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(false);
+        });
+        test('min/max', () => {
+          const yupSchema = buildYupSchema({
+            id: {
+              type: 'number',
+              required: true,
+              min: 3,
+              max: 5,
+            },
+          });
+
+          expect(yupSchema.isValidSync({ id: 2 }))
+            .toEqual(false);
+          expect(yupSchema.isValidSync({ id: 4 }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ id: 6 }))
+            .toEqual(false);
+        });
+      });
+
+      describe('string', () => {
+        test('default', () => {
+          const yupSchema = buildYupSchema({
+            username: 'string',
+          });
+
+          expect(yupSchema.isValidSync({ username: 'petar' }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(true);
+        });
+        test('required', () => {
+          const yupSchema = buildYupSchema({
+            username: {
+              type: 'string',
+              required: true,
+            },
+          });
+
+          expect(yupSchema.isValidSync({ username: 'petar' }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync())
+            .toEqual(false);
+        });
+        test('min/max', () => {
+          const yupSchema = buildYupSchema({
+            username: {
+              type: 'string',
+              required: true,
+              min: 8,
+              max: 12,
+            },
+          });
+
+          expect(yupSchema.isValidSync({ username: 'petar' }))
+            .toEqual(false);
+          expect(yupSchema.isValidSync({ username: 'petar1983' }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ username: 'petarvudragovic' }))
+            .toEqual(false);
+        });
+        test('email', () => {
+          const yupSchema = buildYupSchema({
+            email: {
+              type: 'string',
+              email: true,
+            },
+          });
+
+          expect(yupSchema.isValidSync({ email: 'petar@quintaessentia.rs' }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({ email: 'petar@quintaessentia' }))
+            .toEqual(false);
+        });
+      });
     });
   });
 });

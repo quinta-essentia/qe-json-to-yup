@@ -1,9 +1,12 @@
 import forEach from 'lodash/forEach';
+import head from 'lodash/head';
 import includes from 'lodash/includes';
 import isBoolean from 'lodash/isBoolean';
 import isFunction from 'lodash/isFunction';
 import isPlainObject from 'lodash/isPlainObject';
 import isString from 'lodash/isString';
+import isUndefined from 'lodash/isUndefined';
+import keys from 'lodash/keys';
 import mapValues from 'lodash/mapValues';
 import reduce from 'lodash/reduce';
 import toString from 'lodash/toString';
@@ -91,12 +94,43 @@ const applyMethodsOnType = (base, typeName, methods) => {
     methods,
     ({ name, args }) => {
       if (isFunction(base[name])) {
-        if (isBoolean(args)) {
-          if (args) {
+        if (name === 'when') {
+          const fieldName = head(keys(args));
+
+          const {
+            is,
+            then,
+            otherwise,
+          } = args[fieldName];
+
+          if (isUndefined(is)) {
+            throw new Error('Invalid configuration, property "is" is required in "when" method');
+          }
+
+          if (isUndefined(then)) {
+            throw new Error('Invalid configuration, property "then" is required in "when" method');
+          }
+
+          if (isUndefined(otherwise)) {
+            throw new Error('Invalid configuration, property "otherwise" is required in "when" method');
+          }
+
+          baseType = baseType.when(
+            fieldName,
+            {
+              is,
+              then: getYupSchema(then),
+              otherwise: getYupSchema(otherwise),
+            },
+          );
+        } else {
+          if (isBoolean(args)) {
+            if (args) {
+              baseType = baseType[name](args);
+            }
+          } else {
             baseType = baseType[name](args);
           }
-        } else {
-          baseType = baseType[name](args);
         }
       } else {
         throw new Error(`Invalid method ${name} on ${typeName} type`);
@@ -107,19 +141,18 @@ const applyMethodsOnType = (base, typeName, methods) => {
   return baseType;
 };
 
-const getYupSchema = (config) => object().shape(
-  mapValues(
-    config,
-    (c) => {
-      const normalizedConfig = getNormalizedConfig(c);
+const getYupSchema = (config) => {
+  const normalizedConfig = getNormalizedConfig(config);
 
-      return applyMethodsOnType(
-        getYupType(normalizedConfig),
-        normalizedConfig.type,
-        normalizedConfig.methods,
-      );
-    },
-  ),
+  return applyMethodsOnType(
+    getYupType(normalizedConfig),
+    normalizedConfig.type,
+    normalizedConfig.methods,
+  );
+};
+
+const buildYupSchema = (config) => object().shape(
+  mapValues(config, getYupSchema),
 );
 
 export {
@@ -129,4 +162,5 @@ export {
   getYupType,
   applyMethodsOnType,
   getYupSchema,
+  buildYupSchema,
 };
