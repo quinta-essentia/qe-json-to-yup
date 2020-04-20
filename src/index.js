@@ -87,6 +87,39 @@ const getYupType = ({ type }) => {
   }
 };
 
+const applayMethodWhen = (base, args) => {
+  const fieldName = head(keys(args));
+
+  const {
+    is,
+    then,
+    otherwise,
+  } = args[fieldName];
+
+  if (isUndefined(is)) {
+    throw new Error('Invalid configuration, property "is" is required in "when" method');
+  }
+
+  if (isUndefined(then)) {
+    throw new Error('Invalid configuration, property "then" is required in "when" method');
+  }
+
+  if (isUndefined(otherwise)) {
+    throw new Error('Invalid configuration, property "otherwise" is required in "when" method');
+  }
+
+  return base.when(
+    fieldName,
+    {
+      is,
+      then: getYupSchema(then),
+      otherwise: getYupSchema(otherwise),
+    },
+  );
+};
+
+const applayMethodShape = (base, args) => base.shape(mapValues(args, getYupSchema));
+
 const applyMethodsOnType = (base, typeName, methods) => {
   let baseType = base;
 
@@ -94,43 +127,22 @@ const applyMethodsOnType = (base, typeName, methods) => {
     methods,
     ({ name, args }) => {
       if (isFunction(base[name])) {
-        if (name === 'when') {
-          const fieldName = head(keys(args));
-
-          const {
-            is,
-            then,
-            otherwise,
-          } = args[fieldName];
-
-          if (isUndefined(is)) {
-            throw new Error('Invalid configuration, property "is" is required in "when" method');
-          }
-
-          if (isUndefined(then)) {
-            throw new Error('Invalid configuration, property "then" is required in "when" method');
-          }
-
-          if (isUndefined(otherwise)) {
-            throw new Error('Invalid configuration, property "otherwise" is required in "when" method');
-          }
-
-          baseType = baseType.when(
-            fieldName,
-            {
-              is,
-              then: getYupSchema(then),
-              otherwise: getYupSchema(otherwise),
-            },
-          );
-        } else {
-          if (isBoolean(args)) {
-            if (args) {
+        switch (name) {
+          case 'when':
+            baseType = applayMethodWhen(baseType, args);
+            break;
+          case 'shape':
+            baseType = applayMethodShape(baseType, args);
+            break;
+          default:
+            if (isBoolean(args)) {
+              if (args) {
+                baseType = baseType[name](args);
+              }
+            } else {
               baseType = baseType[name](args);
             }
-          } else {
-            baseType = baseType[name](args);
-          }
+            break;
         }
       } else {
         throw new Error(`Invalid method ${name} on ${typeName} type`);

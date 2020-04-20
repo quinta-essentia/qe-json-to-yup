@@ -141,6 +141,12 @@ describe('qe-json-to-yup', () => {
       expect(getYupType({ type: YupTypesNames.STRING }).isType(true))
         .toEqual(false);
     });
+
+    test('exception', () => {
+      expect(() => {
+        getYupType({ type: 'password' });
+      }).toThrow('Type password is not valid type.');
+    });
   });
 
   describe('applyMethodsOnType', () => {
@@ -532,6 +538,47 @@ describe('qe-json-to-yup', () => {
               },
             });
           }).toThrow('Invalid configuration, property "is" is required in "when" method');
+
+          expect(() => {
+            buildYupSchema({
+              active: {
+                type: 'boolean',
+                required: true,
+              },
+              username: {
+                type: 'mixed',
+                when: {
+                  active: {
+                    is: true,
+                    otherwise: {
+                      type: 'string',
+                    },
+                  },
+                },
+              },
+            });
+          }).toThrow('Invalid configuration, property "then" is required in "when" method');
+
+          expect(() => {
+            buildYupSchema({
+              active: {
+                type: 'boolean',
+                required: true,
+              },
+              username: {
+                type: 'mixed',
+                when: {
+                  active: {
+                    is: true,
+                    then: {
+                      type: 'string',
+                      required: true,
+                    },
+                  },
+                },
+              },
+            });
+          }).toThrow('Invalid configuration, property "otherwise" is required in "when" method');
         });
       });
 
@@ -578,6 +625,51 @@ describe('qe-json-to-yup', () => {
           expect(yupSchema.isValidSync({ id: 4 }))
             .toEqual(true);
           expect(yupSchema.isValidSync({ id: 6 }))
+            .toEqual(false);
+        });
+      });
+
+      describe('object', () => {
+        test('default', () => {
+          const yupSchema = buildYupSchema({
+            location: {
+              type: 'object',
+              shape: {
+                address: {
+                  type: 'string',
+                },
+                latitude: {
+                  type: 'number',
+                  required: true,
+                },
+                longitude: {
+                  type: 'number',
+                  required: true,
+                },
+              },
+            },
+          });
+
+          expect(yupSchema.isValidSync({
+            location: {
+              address: 'Trg republike 1а, Beograd 104303',
+              latitude: 44.8167441,
+              longitude: 20.4577252,
+            },
+          }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({
+            location: {
+              latitude: 44.8167441,
+              longitude: 20.4577252,
+            },
+          }))
+            .toEqual(true);
+          expect(yupSchema.isValidSync({
+            location: {
+              longitude: 20.4577252,
+            },
+          }))
             .toEqual(false);
         });
       });
